@@ -161,9 +161,10 @@ export default function Recorder() {
     const pendingEntry: TranscriptionEntry = {
       id: entryId,
       text: '',
-      timestamp: new Date(),
+      timestamp: new Date().toISOString(),
       duration: recordingTime,
       language: settings.language === 'auto' ? 'detecting...' : settings.language,
+      model: settings.model,
       status: 'processing',
     };
     addToHistory(pendingEntry);

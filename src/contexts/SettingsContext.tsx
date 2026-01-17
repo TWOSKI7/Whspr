@@ -55,8 +55,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   compressionRatioThreshold: 2.4,
   logProbThreshold: -1.0,
   noSpeechThreshold: 0.6,
-  theme: 'system',
+  theme: 'light',
   backendUrl: import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000',
+  keyboardShortcut: 'Shift+T',
+  dictionary: [],
 };
 
 // Context interface
@@ -67,6 +69,7 @@ interface SettingsContextType {
 
   // Transcription history
   history: TranscriptionEntry[];
+  addTranscription: (entry: TranscriptionEntry) => void;
   addToHistory: (entry: TranscriptionEntry) => void;
   updateHistoryEntry: (id: string, updates: Partial<TranscriptionEntry>) => void;
   removeFromHistory: (id: string) => void;
@@ -110,12 +113,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     try {
       const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
       if (stored) {
-        const parsed = JSON.parse(stored);
-        // Convert timestamp strings back to Date objects
-        return parsed.map((entry: TranscriptionEntry) => ({
-          ...entry,
-          timestamp: new Date(entry.timestamp),
-        }));
+        return JSON.parse(stored);
       }
     } catch (e) {
       console.error('Failed to load history:', e);
@@ -201,7 +199,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
   // Check backend connection on mount and when URL changes
   useEffect(() => {
     checkBackendConnection();
-    const interval = setInterval(checkBackendConnection, 30000); // Check every 30s
+    const interval = setInterval(checkBackendConnection, 30000);
     return () => clearInterval(interval);
   }, [settings.backendUrl]);
 
@@ -216,8 +214,10 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
 
   // History methods
   const addToHistory = (entry: TranscriptionEntry) => {
-    setHistory(prev => [entry, ...prev].slice(0, 100)); // Keep last 100 entries
+    setHistory(prev => [entry, ...prev].slice(0, 100));
   };
+
+  const addTranscription = addToHistory;
 
   const updateHistoryEntry = (id: string, updates: Partial<TranscriptionEntry>) => {
     setHistory(prev =>
@@ -239,6 +239,7 @@ export function SettingsProvider({ children }: SettingsProviderProps) {
     resetSettings,
     history,
     addToHistory,
+    addTranscription,
     updateHistoryEntry,
     removeFromHistory,
     clearHistory,
@@ -263,5 +264,4 @@ export function useSettings() {
   return context;
 }
 
-// Export default for convenience
 export default SettingsContext;

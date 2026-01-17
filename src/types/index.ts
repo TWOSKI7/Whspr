@@ -3,12 +3,13 @@
 export interface TranscriptionEntry {
   id: string;
   text: string;
-  timestamp: Date;
+  timestamp: string;
   duration: number;
   language: string;
+  model: string;
   audioFile?: string;
   segments?: TranscriptionSegment[];
-  status: 'pending' | 'processing' | 'completed' | 'error';
+  status?: 'pending' | 'processing' | 'completed' | 'error';
   error?: string;
 }
 
@@ -17,11 +18,11 @@ export interface TranscriptionSegment {
   start: number;
   end: number;
   text: string;
-  tokens: number[];
-  temperature: number;
-  avgLogprob: number;
-  compressionRatio: number;
-  noSpeechProb: number;
+  tokens?: number[];
+  temperature?: number;
+  avgLogprob?: number;
+  compressionRatio?: number;
+  noSpeechProb?: number;
 }
 
 export interface WhisperModel {
@@ -30,6 +31,12 @@ export interface WhisperModel {
   parameters: string;
   vram: string;
   speed: string;
+}
+
+export interface DictionaryEntry {
+  id: string;
+  word: string;
+  replacement: string;
 }
 
 export interface AppSettings {
@@ -44,6 +51,8 @@ export interface AppSettings {
   noSpeechThreshold: number;
   theme: 'light' | 'dark' | 'system';
   backendUrl: string;
+  keyboardShortcut: string;
+  dictionary: DictionaryEntry[];
 }
 
 export interface RecordingState {
