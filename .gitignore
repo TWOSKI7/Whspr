@@ -9,3 +9,13 @@ thumbs.db
 .DS_Store
 .idea
 
+# Node.js
+node_modules/
+dist/
+.env
+.env.local
+
+# Editor
+.vscode/
+*.swp
+*.swo
