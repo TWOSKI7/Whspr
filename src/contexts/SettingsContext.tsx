@@ -6,9 +6,9 @@ import {
   BackendStatus
 } from '../types';
 
-// Re-export types for convenience
-export type { TranscriptionEntry } from '../types';
-export type { AppSettings, WhisperModel, BackendStatus } from '../types';
+// Re-export types for convenience - use export {} not export type {} for Vite compatibility
+export { type TranscriptionEntry } from '../types';
+export { type AppSettings, type WhisperModel, type BackendStatus } from '../types';
 
 // Available Whisper models
 export const WHISPER_MODELS: WhisperModel[] = [

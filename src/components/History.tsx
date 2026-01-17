@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { TranscriptionEntry, useSettings } from '../contexts/SettingsContext';
+import { useSettings } from '../contexts/SettingsContext';
+import type { TranscriptionEntry } from '../contexts/SettingsContext';
 
 function formatDuration(seconds: number): string {
   const mins = Math.floor(seconds / 60);
