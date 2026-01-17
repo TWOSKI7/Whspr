@@ -1,6 +1,6 @@
 """
-FastAPI backend server for Whisper transcription.
-Connects the React frontend to the Whisper library.
+Whspr - Self-hosted speech-to-text powered by OpenAI Whisper.
+A simple, single-file web app for audio transcription.
 """
 
 import os
@@ -14,7 +14,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 # Import whisper
@@ -34,15 +35,15 @@ except ImportError:
 
 # Create FastAPI app
 app = FastAPI(
-    title="Whisper Transcription API",
-    description="API for OpenAI Whisper speech-to-text transcription",
+    title="Whspr - Speech to Text",
+    description="Self-hosted transcription powered by OpenAI Whisper",
     version="1.0.0",
 )
 
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,27 +55,33 @@ AVAILABLE_MODELS = ["tiny", "base", "small", "medium", "large", "turbo"]
 # Cache for loaded models
 _model_cache = {}
 
+# Template directory
+TEMPLATE_DIR = Path(__file__).parent / "templates"
+
 
 def get_model(model_name: str):
     """Load and cache a Whisper model."""
     if not WHISPER_AVAILABLE:
-        raise HTTPException(status_code=500, detail="Whisper not installed")
+        raise HTTPException(status_code=500, detail="Whisper not installed. Run: pip install openai-whisper")
 
     if model_name not in AVAILABLE_MODELS:
         raise HTTPException(status_code=400, detail=f"Invalid model: {model_name}")
 
     if model_name not in _model_cache:
-        print(f"Loading model: {model_name}")
+        print(f"Loading model: {model_name}...")
         _model_cache[model_name] = whisper.load_model(model_name)
         print(f"Model {model_name} loaded successfully")
 
     return _model_cache[model_name]
 
 
-@app.get("/")
-async def root():
-    """Root endpoint."""
-    return {"message": "Whisper Transcription API", "status": "running"}
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    """Serve the main web interface."""
+    html_file = TEMPLATE_DIR / "index.html"
+    if html_file.exists():
+        return HTMLResponse(content=html_file.read_text(), status_code=200)
+    return HTMLResponse(content="<h1>Whspr</h1><p>Template not found. Check backend/templates/index.html</p>", status_code=200)
 
 
 @app.get("/health")
@@ -120,7 +127,7 @@ async def transcribe(
         Transcription result with text, segments, and metadata
     """
     if not WHISPER_AVAILABLE:
-        raise HTTPException(status_code=500, detail="Whisper not installed")
+        raise HTTPException(status_code=500, detail="Whisper not installed. Run: pip install openai-whisper")
 
     # Validate file
     if not file.filename:
@@ -154,11 +161,6 @@ async def transcribe(
                 "start": seg["start"],
                 "end": seg["end"],
                 "text": seg["text"],
-                "tokens": seg.get("tokens", []),
-                "temperature": seg.get("temperature", 0),
-                "avgLogprob": seg.get("avg_logprob", 0),
-                "compressionRatio": seg.get("compression_ratio", 0),
-                "noSpeechProb": seg.get("no_speech_prob", 0),
             })
 
         return {
@@ -179,62 +181,12 @@ async def transcribe(
             pass
 
 
-@app.post("/transcribe/stream")
-async def transcribe_stream(
-    file: UploadFile = File(...),
-    model: str = Form(default="turbo"),
-    language: Optional[str] = Form(default=None),
-):
-    """
-    Stream transcription results as they become available.
-    Uses Server-Sent Events (SSE) format.
-    """
-    if not WHISPER_AVAILABLE:
-        raise HTTPException(status_code=500, detail="Whisper not installed")
-
-    # Save uploaded file
-    suffix = Path(file.filename).suffix if file.filename else ".webm"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    async def generate():
-        try:
-            whisper_model = get_model(model)
-
-            # For streaming, we use the segment callback
-            result = whisper_model.transcribe(
-                tmp_path,
-                language=language,
-                verbose=False,
-            )
-
-            # Stream each segment
-            text_so_far = ""
-            for seg in result.get("segments", []):
-                text_so_far += seg["text"]
-                yield f"data: {{\\"text\\": \\"{text_so_far}\\", \\"segment\\": {{\\"start\\": {seg['start']}, \\"end\\": {seg['end']}, \\"text\\": \\"{seg['text']}\\"}}}}\\n\\n"
-
-            # Final result
-            yield f"data: {{\\"text\\": \\"{result['text']}\\", \\"language\\": \\"{result.get('language', 'unknown')}\\", \\"done\\": true}}\\n\\n"
-
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except:
-                pass
-
-    return StreamingResponse(generate(), media_type="text/event-stream")
-
-
 @app.post("/detect-language")
 async def detect_language(file: UploadFile = File(...)):
     """Detect the language of an audio file."""
     if not WHISPER_AVAILABLE:
         raise HTTPException(status_code=500, detail="Whisper not installed")
 
-    # Save uploaded file
     suffix = Path(file.filename).suffix if file.filename else ".webm"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         content = await file.read()
@@ -242,20 +194,16 @@ async def detect_language(file: UploadFile = File(...)):
         tmp_path = tmp.name
 
     try:
-        model = get_model("base")  # Use small model for language detection
-
-        # Load audio and detect language
+        model = get_model("base")
         audio = whisper.load_audio(tmp_path)
         audio = whisper.pad_or_trim(audio)
         mel = whisper.log_mel_spectrogram(audio).to(model.device)
-
         _, probs = model.detect_language(mel)
         detected_lang = max(probs, key=probs.get)
 
         return {
             "language": detected_lang,
             "confidence": probs[detected_lang],
-            "probabilities": dict(sorted(probs.items(), key=lambda x: x[1], reverse=True)[:10]),
         }
 
     finally:
@@ -265,7 +213,6 @@ async def detect_language(file: UploadFile = File(...)):
             pass
 
 
-# Error handlers
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     return JSONResponse(
@@ -275,9 +222,13 @@ async def global_exception_handler(request, exc):
 
 
 if __name__ == "__main__":
-    print("Starting Whisper Transcription API...")
-    print(f"Whisper available: {WHISPER_AVAILABLE}")
-    print(f"GPU available: {GPU_AVAILABLE}")
+    print("\n" + "="*50)
+    print("  Whspr - Self-hosted Speech to Text")
+    print("="*50)
+    print(f"  Whisper: {'Available' if WHISPER_AVAILABLE else 'Not installed'}")
+    print(f"  GPU:     {'Available' if GPU_AVAILABLE else 'CPU only'}")
+    print("="*50)
+    print("\n  Open http://localhost:8000 in your browser\n")
 
     uvicorn.run(
         "main:app",

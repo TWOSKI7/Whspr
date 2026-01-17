@@ -1,7 +1,10 @@
-# Backend API requirements
+# Whspr - Backend requirements
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
 
-# Whisper is installed from the parent directory
-# or via: pip install openai-whisper
+# Whisper
+openai-whisper>=20231117
+
+# PyTorch (CPU version - for GPU, install separately)
+torch>=2.0.0

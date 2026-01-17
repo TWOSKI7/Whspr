@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  whspr:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/templates:/app/backend/templates
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+# GPU version - uncomment if you have NVIDIA GPU
+# services:
+#   whspr:
+#     build: .
+#     ports:
+#       - "8000:8000"
+#     volumes:
+#       - ./backend/templates:/app/backend/templates
+#     deploy:
+#       resources:
+#         reservations:
+#           devices:
+#             - driver: nvidia
+#               count: 1
+#               capabilities: [gpu]
+#     restart: unless-stopped
