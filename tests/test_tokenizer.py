@@ -5,7 +5,7 @@ from whisper.tokenizer import get_tokenizer
 
 @pytest.mark.parametrize("multilingual", [True, False])
 def test_tokenizer(multilingual):
-    tokenizer = get_tokenizer(multilingual=False)
+    tokenizer = get_tokenizer(multilingual=multilingual)
     assert tokenizer.sot in tokenizer.sot_sequence
     assert len(tokenizer.all_language_codes) == len(tokenizer.all_language_tokens)
     assert all(c < tokenizer.timestamp_begin for c in tokenizer.all_language_tokens)
