@@ -14,8 +14,12 @@ from .audio import (
     N_FRAMES,
     N_SAMPLES,
     SAMPLE_RATE,
+    SOUNDDEVICE_AVAILABLE,
+    list_microphones,
     log_mel_spectrogram,
     pad_or_trim,
+    record_audio,
+    record_until_silence,
 )
 from .decoding import DecodingOptions, DecodingResult
 from .timing import add_word_timestamps
@@ -526,7 +530,11 @@ def cli():
 
     # fmt: off
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("audio", nargs="+", type=str, help="audio file(s) to transcribe")
+    parser.add_argument("audio", nargs="*", type=str, help="audio file(s) to transcribe")
+    parser.add_argument("--mic", "--microphone", action="store_true", help="record audio from microphone instead of file")
+    parser.add_argument("--list-devices", action="store_true", help="list available audio input devices and exit")
+    parser.add_argument("--mic-device", type=int, default=None, help="microphone device index (use --list-devices to see available devices)")
+    parser.add_argument("--record-duration", type=float, default=None, help="recording duration in seconds (default: record until silence)")
     parser.add_argument("--model", default="turbo", type=valid_model_name, help="name of the Whisper model to use")
     parser.add_argument("--model_dir", type=str, default=None, help="the path to save model files; uses ~/.cache/whisper by default")
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu", help="device to use for PyTorch inference")
@@ -567,12 +575,37 @@ def cli():
     # fmt: on
 
     args = parser.parse_args().__dict__
+
+    # Handle --list-devices first (exit after listing)
+    if args.pop("list_devices"):
+        if not SOUNDDEVICE_AVAILABLE:
+            print("Error: sounddevice is not available. Install it with: pip install sounddevice")
+            return
+        print("Available audio input devices:")
+        for dev in list_microphones():
+            print(f"  [{dev['index']}] {dev['name']} (channels: {dev['channels']}, sample rate: {dev['default_samplerate']})")
+        return
+
+    use_mic: bool = args.pop("mic")
+    mic_device: Optional[int] = args.pop("mic_device")
+    record_duration: Optional[float] = args.pop("record_duration")
+
     model_name: str = args.pop("model")
     model_dir: str = args.pop("model_dir")
     output_dir: str = args.pop("output_dir")
     output_format: str = args.pop("output_format")
     device: str = args.pop("device")
     os.makedirs(output_dir, exist_ok=True)
+
+    # Validate arguments
+    audio_files = args.pop("audio")
+    if not use_mic and not audio_files:
+        parser.error("Either provide audio file(s) or use --mic to record from microphone")
+    if use_mic and audio_files:
+        print("Warning: --mic specified, ignoring audio file arguments")
+
+    if use_mic and not SOUNDDEVICE_AVAILABLE:
+        parser.error("Microphone support requires sounddevice. Install with: pip install sounddevice")
 
     if model_name.endswith(".en") and args["language"] not in {"en", "English"}:
         if args["language"] is not None:
@@ -610,13 +643,43 @@ def cli():
     if args["max_words_per_line"] and args["max_line_width"]:
         warnings.warn("--max_words_per_line has no effect with --max_line_width")
     writer_args = {arg: args.pop(arg) for arg in word_options}
-    for audio_path in args.pop("audio"):
+
+    if use_mic:
+        # Record from microphone
         try:
-            result = transcribe(model, audio_path, temperature=temperature, **args)
-            writer(result, audio_path, **writer_args)
+            if record_duration is not None:
+                audio_data = record_audio(
+                    duration=record_duration,
+                    device=mic_device,
+                    show_progress=args.get("verbose", True),
+                )
+            else:
+                audio_data = record_until_silence(
+                    device=mic_device,
+                    show_progress=args.get("verbose", True),
+                )
+
+            if len(audio_data) == 0:
+                print("No audio recorded.")
+                return
+
+            result = transcribe(model, audio_data, temperature=temperature, **args)
+            # Use a placeholder name for microphone input
+            writer(result, "microphone_recording", **writer_args)
+            print("\nTranscription:")
+            print(result["text"])
         except Exception as e:
             traceback.print_exc()
-            print(f"Skipping {audio_path} due to {type(e).__name__}: {str(e)}")
+            print(f"Microphone recording failed: {type(e).__name__}: {str(e)}")
+    else:
+        # Process audio files
+        for audio_path in audio_files:
+            try:
+                result = transcribe(model, audio_path, temperature=temperature, **args)
+                writer(result, audio_path, **writer_args)
+            except Exception as e:
+                traceback.print_exc()
+                print(f"Skipping {audio_path} due to {type(e).__name__}: {str(e)}")
 
 
 if __name__ == "__main__":

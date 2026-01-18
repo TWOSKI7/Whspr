@@ -1,4 +1,5 @@
 import os
+import sys
 from functools import lru_cache
 from subprocess import CalledProcessError, run
 from typing import Optional, Union
@@ -8,6 +9,14 @@ import torch
 import torch.nn.functional as F
 
 from .utils import exact_div
+
+# Microphone support - sounddevice is optional
+try:
+    import sounddevice as sd
+    SOUNDDEVICE_AVAILABLE = True
+except (ImportError, OSError) as e:
+    SOUNDDEVICE_AVAILABLE = False
+    _sounddevice_import_error = str(e)
 
 # hard-coded audio hyperparameters
 SAMPLE_RATE = 16000
@@ -155,3 +164,219 @@ def log_mel_spectrogram(
     log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
     log_spec = (log_spec + 4.0) / 4.0
     return log_spec
+
+
+def list_microphones():
+    """
+    List available audio input devices (microphones).
+
+    Returns
+    -------
+    List of dictionaries containing device information with 'index', 'name', and 'channels'.
+    """
+    if not SOUNDDEVICE_AVAILABLE:
+        raise RuntimeError(
+            f"sounddevice is not available: {_sounddevice_import_error}\n"
+            "Install it with: pip install sounddevice"
+        )
+
+    devices = sd.query_devices()
+    input_devices = []
+    for i, device in enumerate(devices):
+        if device['max_input_channels'] > 0:
+            input_devices.append({
+                'index': i,
+                'name': device['name'],
+                'channels': device['max_input_channels'],
+                'default_samplerate': device['default_samplerate']
+            })
+    return input_devices
+
+
+def get_default_microphone():
+    """
+    Get the default input device index.
+
+    Returns
+    -------
+    int: The index of the default input device.
+    """
+    if not SOUNDDEVICE_AVAILABLE:
+        raise RuntimeError(
+            f"sounddevice is not available: {_sounddevice_import_error}\n"
+            "Install it with: pip install sounddevice"
+        )
+
+    try:
+        default_device = sd.query_devices(kind='input')
+        return sd.default.device[0] if sd.default.device[0] is not None else 0
+    except Exception:
+        # Fall back to first available input device
+        devices = list_microphones()
+        if devices:
+            return devices[0]['index']
+        raise RuntimeError("No input devices found")
+
+
+def record_audio(
+    duration: float = 5.0,
+    device: Optional[int] = None,
+    sr: int = SAMPLE_RATE,
+    show_progress: bool = True,
+) -> np.ndarray:
+    """
+    Record audio from microphone.
+
+    Parameters
+    ----------
+    duration: float
+        Recording duration in seconds (default: 5.0)
+
+    device: int, optional
+        Input device index. If None, uses the default input device.
+        Use list_microphones() to see available devices.
+
+    sr: int
+        Sample rate (default: 16000 Hz, as required by Whisper)
+
+    show_progress: bool
+        If True, print recording status messages
+
+    Returns
+    -------
+    np.ndarray
+        Audio waveform as float32 array normalized to [-1, 1]
+    """
+    if not SOUNDDEVICE_AVAILABLE:
+        raise RuntimeError(
+            f"sounddevice is not available: {_sounddevice_import_error}\n"
+            "Install it with: pip install sounddevice"
+        )
+
+    if device is None:
+        device = get_default_microphone()
+
+    if show_progress:
+        print(f"Recording for {duration} seconds... (Press Ctrl+C to stop early)")
+
+    try:
+        # Record audio - mono, 16-bit
+        recording = sd.rec(
+            int(duration * sr),
+            samplerate=sr,
+            channels=1,
+            dtype='float32',
+            device=device,
+        )
+        sd.wait()  # Wait until recording is finished
+
+        if show_progress:
+            print("Recording complete.")
+
+        # Flatten to 1D array
+        audio = recording.flatten()
+        return audio
+
+    except KeyboardInterrupt:
+        sd.stop()
+        if show_progress:
+            print("\nRecording stopped by user.")
+        # Return whatever was recorded
+        audio = recording.flatten()
+        # Trim to actual recorded length (remove silence at end)
+        return audio
+    except Exception as e:
+        raise RuntimeError(f"Failed to record audio: {e}")
+
+
+def record_until_silence(
+    silence_threshold: float = 0.01,
+    silence_duration: float = 2.0,
+    max_duration: float = 30.0,
+    device: Optional[int] = None,
+    sr: int = SAMPLE_RATE,
+    show_progress: bool = True,
+) -> np.ndarray:
+    """
+    Record audio from microphone until silence is detected.
+
+    Parameters
+    ----------
+    silence_threshold: float
+        RMS amplitude below which audio is considered silence (default: 0.01)
+
+    silence_duration: float
+        Duration of silence (in seconds) to wait before stopping (default: 2.0)
+
+    max_duration: float
+        Maximum recording duration in seconds (default: 30.0, Whisper's chunk size)
+
+    device: int, optional
+        Input device index. If None, uses the default input device.
+
+    sr: int
+        Sample rate (default: 16000 Hz)
+
+    show_progress: bool
+        If True, print recording status messages
+
+    Returns
+    -------
+    np.ndarray
+        Audio waveform as float32 array normalized to [-1, 1]
+    """
+    if not SOUNDDEVICE_AVAILABLE:
+        raise RuntimeError(
+            f"sounddevice is not available: {_sounddevice_import_error}\n"
+            "Install it with: pip install sounddevice"
+        )
+
+    if device is None:
+        device = get_default_microphone()
+
+    if show_progress:
+        print("Recording... (speak now, will stop after silence or press Ctrl+C)")
+
+    chunk_duration = 0.1  # 100ms chunks for silence detection
+    chunk_samples = int(sr * chunk_duration)
+    silence_chunks_needed = int(silence_duration / chunk_duration)
+    max_chunks = int(max_duration / chunk_duration)
+
+    audio_chunks = []
+    silence_counter = 0
+
+    try:
+        with sd.InputStream(
+            samplerate=sr,
+            channels=1,
+            dtype='float32',
+            device=device,
+            blocksize=chunk_samples,
+        ) as stream:
+            for _ in range(max_chunks):
+                chunk, overflowed = stream.read(chunk_samples)
+                audio_chunks.append(chunk.flatten())
+
+                # Calculate RMS for silence detection
+                rms = np.sqrt(np.mean(chunk ** 2))
+
+                if rms < silence_threshold:
+                    silence_counter += 1
+                    if silence_counter >= silence_chunks_needed:
+                        if show_progress:
+                            print("Silence detected, stopping recording.")
+                        break
+                else:
+                    silence_counter = 0
+
+    except KeyboardInterrupt:
+        if show_progress:
+            print("\nRecording stopped by user.")
+
+    if show_progress:
+        print("Recording complete.")
+
+    if not audio_chunks:
+        return np.array([], dtype=np.float32)
+
+    return np.concatenate(audio_chunks)
