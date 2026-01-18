@@ -280,16 +280,22 @@ class RecordingThread(QThread):
         try:
             self.status.emit("Saving audio...")
 
+            # Validate audio data
+            if self.audio_data is None or len(self.audio_data) == 0:
+                self.error.emit("No audio recorded")
+                return
+
             # Convert float32 audio to int16 for WAV file
             audio_int16 = (self.audio_data * 32767).astype(np.int16)
 
             # Write WAV file using built-in wave module (no external deps)
             temp_path = os.path.join(tempfile.gettempdir(), "whisper_recording.wav")
-            with wave.open(temp_path, 'wb') as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)  # 2 bytes for int16
-                wf.setframerate(self.sample_rate)
-                wf.writeframes(audio_int16.tobytes())
+            wf = wave.open(temp_path, 'wb')
+            wf.setnchannels(1)
+            wf.setsampwidth(2)  # 2 bytes for int16
+            wf.setframerate(self.sample_rate)
+            wf.writeframes(audio_int16.tobytes())
+            wf.close()
 
             self.status.emit("Loading model...")
             import whisper

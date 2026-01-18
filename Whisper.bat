@@ -28,7 +28,7 @@ if %errorlevel% neq 0 (
 
 REM Install Python dependencies
 echo Installing Python packages...
-pip install --quiet --upgrade numpy PyQt5 sounddevice soundfile pynput openai-whisper
+pip install --quiet --upgrade numpy PyQt5 sounddevice pynput openai-whisper
 
 REM Check if torch needs install/reinstall
 pip show torch >nul 2>&1
