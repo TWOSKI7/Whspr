@@ -25,6 +25,7 @@ dependencies = [
   "more-itertools",
   "numba",
   "numpy",
+  "sounddevice",
   "tiktoken",
   "torch",
   "tqdm",
