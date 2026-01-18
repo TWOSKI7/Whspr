@@ -281,15 +281,18 @@ class RecordingThread(QThread):
             import whisper
             import soundfile as sf
 
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                temp_path = f.name
-                sf.write(temp_path, self.audio_data, self.sample_rate)
+            # Create temp file path (close it first for Windows compatibility)
+            temp_path = os.path.join(tempfile.gettempdir(), "whisper_recording.wav")
+            sf.write(temp_path, self.audio_data, self.sample_rate)
 
             model = whisper.load_model(self.model_name)
             self.status.emit("Transcribing...")
             result = model.transcribe(temp_path, task="transcribe")
 
-            os.unlink(temp_path)
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
             self.finished.emit(result["text"].strip())
         except Exception as e:
             self.error.emit(str(e))
