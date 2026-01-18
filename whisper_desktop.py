@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Whisper Desktop App - Toggle Microphone with System-Wide Typing & Voice Visualizer
+Hotkey: Alt+T to toggle recording
 """
 import sys
 import os
@@ -10,7 +11,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QComboBox, QTextEdit, QMessageBox, QSizePolicy
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QRectF
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QRectF, QObject
 from PyQt5.QtGui import QFont, QPainter, QColor, QLinearGradient, QPainterPath
 
 DARK_STYLE = """
@@ -34,6 +35,10 @@ QLabel#title {
 QLabel#status {
     font-size: 12px;
     color: #888;
+}
+QLabel#hotkey {
+    font-size: 11px;
+    color: #666;
 }
 QPushButton {
     background-color: #0f3460;
@@ -106,6 +111,10 @@ QLabel#status {
     color: #00d4ff;
     font-size: 10px;
 }
+QLabel#hotkey {
+    color: #666;
+    font-size: 9px;
+}
 QPushButton#micBtn {
     background-color: #e94560;
     color: white;
@@ -122,6 +131,43 @@ QPushButton#micBtn[recording="true"] {
     color: #1a1a2e;
 }
 """
+
+
+class HotkeyListener(QThread):
+    """Global hotkey listener for Alt+T"""
+    triggered = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.running = True
+
+    def run(self):
+        try:
+            from pynput import keyboard
+
+            alt_pressed = False
+
+            def on_press(key):
+                nonlocal alt_pressed
+                if key == keyboard.Key.alt_l or key == keyboard.Key.alt_r:
+                    alt_pressed = True
+                elif alt_pressed and hasattr(key, 'char') and key.char == 't':
+                    self.triggered.emit()
+
+            def on_release(key):
+                nonlocal alt_pressed
+                if key == keyboard.Key.alt_l or key == keyboard.Key.alt_r:
+                    alt_pressed = False
+
+            with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
+                while self.running:
+                    listener.join(0.1)
+
+        except Exception as e:
+            print(f"Hotkey listener error: {e}")
+
+    def stop(self):
+        self.running = False
 
 
 class VoiceVisualizer(QWidget):
@@ -263,12 +309,12 @@ class MiniWidget(QWidget):
         self.init_ui()
 
     def init_ui(self):
-        self.setFixedSize(140, 110)
+        self.setFixedSize(140, 130)
         self.setStyleSheet(WIDGET_STYLE)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(5)
+        layout.setSpacing(4)
 
         # Visualizer
         self.visualizer = VoiceVisualizer(self, bar_count=12, mini=True)
@@ -291,6 +337,12 @@ class MiniWidget(QWidget):
         self.status_label.setObjectName("status")
         self.status_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.status_label)
+
+        # Hotkey hint
+        hotkey_label = QLabel("Alt+T")
+        hotkey_label.setObjectName("hotkey")
+        hotkey_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(hotkey_label)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -397,12 +449,14 @@ class WhisperApp(QMainWindow):
         self.stream = None
         self.worker = None
         self.mini_widget = None
+        self.hotkey_listener = None
         self.init_ui()
+        self.start_hotkey_listener()
 
     def init_ui(self):
         self.setWindowTitle("Whisper")
-        self.setMinimumSize(500, 500)
-        self.setGeometry(100, 100, 550, 550)
+        self.setMinimumSize(500, 520)
+        self.setGeometry(100, 100, 550, 570)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -448,6 +502,12 @@ class WhisperApp(QMainWindow):
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
+        # Hotkey hint
+        hotkey_label = QLabel("Hotkey: Alt+T to toggle recording")
+        hotkey_label.setObjectName("hotkey")
+        hotkey_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(hotkey_label)
+
         # Status
         self.status_label = QLabel("")
         self.status_label.setObjectName("status")
@@ -470,6 +530,20 @@ class WhisperApp(QMainWindow):
         copy_btn.clicked.connect(self.copy_output)
         bottom.addWidget(copy_btn)
         layout.addLayout(bottom)
+
+    def start_hotkey_listener(self):
+        """Start the global hotkey listener"""
+        self.hotkey_listener = HotkeyListener()
+        self.hotkey_listener.triggered.connect(self.on_hotkey)
+        self.hotkey_listener.start()
+
+    def on_hotkey(self):
+        """Handle Alt+T hotkey"""
+        # If mini widget is visible, use it; otherwise use main app
+        if self.mini_widget and self.mini_widget.isVisible():
+            self.mini_widget.toggle_recording()
+        else:
+            self.toggle_recording()
 
     def show_mini_widget(self):
         if not self.mini_widget:
@@ -495,7 +569,7 @@ class WhisperApp(QMainWindow):
             self.record_btn.setProperty("recording", True)
             self.record_btn.style().unpolish(self.record_btn)
             self.record_btn.style().polish(self.record_btn)
-            self.status_label.setText("🎤 Recording... Click to stop")
+            self.status_label.setText("🎤 Recording... Click or Alt+T to stop")
 
             def callback(indata, frames, time, status):
                 if self.recording:
@@ -583,6 +657,13 @@ class WhisperApp(QMainWindow):
         if text:
             QApplication.clipboard().setText(text)
             self.status_label.setText("✓ Copied!")
+
+    def closeEvent(self, event):
+        """Clean up hotkey listener on close"""
+        if self.hotkey_listener:
+            self.hotkey_listener.stop()
+            self.hotkey_listener.wait()
+        event.accept()
 
 
 def main():
