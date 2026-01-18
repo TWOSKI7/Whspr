@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Whisper Desktop App - Toggle Microphone with System-Wide Typing
+Whisper Desktop App - Toggle Microphone with System-Wide Typing & Voice Visualizer
 """
 import sys
 import os
@@ -8,11 +8,10 @@ import tempfile
 import numpy as np
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QLabel, QComboBox, QTextEdit, QMessageBox, QSystemTrayIcon,
-    QMenu, QAction
+    QPushButton, QLabel, QComboBox, QTextEdit, QMessageBox, QSizePolicy
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer, QRectF
+from PyQt5.QtGui import QFont, QPainter, QColor, QLinearGradient, QPainterPath
 
 DARK_STYLE = """
 QMainWindow {
@@ -62,14 +61,6 @@ QPushButton#recordBtn[recording="true"] {
     background-color: #00d4ff;
     color: #1a1a2e;
 }
-QPushButton#settingsBtn {
-    background-color: transparent;
-    color: #888;
-    padding: 4px 8px;
-}
-QPushButton#settingsBtn:hover {
-    color: #00d4ff;
-}
 QComboBox {
     background-color: #16213e;
     color: #eaeaea;
@@ -113,14 +104,14 @@ QWidget {
 }
 QLabel#status {
     color: #00d4ff;
-    font-size: 11px;
+    font-size: 10px;
 }
 QPushButton#micBtn {
     background-color: #e94560;
     color: white;
     border: none;
-    border-radius: 25px;
-    font-size: 20px;
+    border-radius: 20px;
+    font-size: 16px;
     font-weight: bold;
 }
 QPushButton#micBtn:hover {
@@ -131,6 +122,100 @@ QPushButton#micBtn[recording="true"] {
     color: #1a1a2e;
 }
 """
+
+
+class VoiceVisualizer(QWidget):
+    """Real-time voice level visualizer with bars"""
+    def __init__(self, parent=None, bar_count=20, mini=False):
+        super().__init__(parent)
+        self.bar_count = bar_count
+        self.mini = mini
+        self.levels = [0.0] * bar_count
+        self.peak_levels = [0.0] * bar_count
+        self.current_level = 0.0
+
+        if mini:
+            self.setFixedHeight(30)
+            self.setMinimumWidth(80)
+        else:
+            self.setFixedHeight(60)
+            self.setMinimumWidth(200)
+
+        # Animation timer for smooth decay
+        self.decay_timer = QTimer(self)
+        self.decay_timer.timeout.connect(self.decay_levels)
+        self.decay_timer.start(30)  # 30ms refresh
+
+    def set_level(self, level):
+        """Set the current audio level (0.0 to 1.0)"""
+        self.current_level = min(1.0, max(0.0, level))
+        # Shift levels and add new one
+        self.levels.pop(0)
+        self.levels.append(self.current_level)
+        # Update peaks
+        for i, lvl in enumerate(self.levels):
+            if lvl > self.peak_levels[i]:
+                self.peak_levels[i] = lvl
+        self.update()
+
+    def decay_levels(self):
+        """Gradually decay peak levels"""
+        changed = False
+        for i in range(len(self.peak_levels)):
+            if self.peak_levels[i] > self.levels[i]:
+                self.peak_levels[i] = max(self.levels[i], self.peak_levels[i] - 0.05)
+                changed = True
+        if changed:
+            self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        w = self.width()
+        h = self.height()
+
+        # Background
+        painter.fillRect(0, 0, w, h, QColor("#16213e"))
+
+        # Calculate bar dimensions
+        spacing = 2 if self.mini else 3
+        bar_width = (w - (self.bar_count + 1) * spacing) / self.bar_count
+
+        for i, level in enumerate(self.levels):
+            x = spacing + i * (bar_width + spacing)
+            bar_height = max(2, level * (h - 4))
+            y = h - 2 - bar_height
+
+            # Create gradient based on level
+            gradient = QLinearGradient(x, h, x, 0)
+            if level < 0.3:
+                gradient.setColorAt(0, QColor("#00d4ff"))
+                gradient.setColorAt(1, QColor("#0099cc"))
+            elif level < 0.6:
+                gradient.setColorAt(0, QColor("#00ff88"))
+                gradient.setColorAt(1, QColor("#00d4ff"))
+            elif level < 0.8:
+                gradient.setColorAt(0, QColor("#ffcc00"))
+                gradient.setColorAt(1, QColor("#00ff88"))
+            else:
+                gradient.setColorAt(0, QColor("#ff4444"))
+                gradient.setColorAt(1, QColor("#ffcc00"))
+
+            # Draw bar with rounded corners
+            painter.setBrush(gradient)
+            painter.setPen(Qt.NoPen)
+            radius = 2 if self.mini else 3
+            painter.drawRoundedRect(QRectF(x, y, bar_width, bar_height), radius, radius)
+
+        painter.end()
+
+    def reset(self):
+        """Reset all levels"""
+        self.levels = [0.0] * self.bar_count
+        self.peak_levels = [0.0] * self.bar_count
+        self.current_level = 0.0
+        self.update()
 
 
 class RecordingThread(QThread):
@@ -165,7 +250,7 @@ class RecordingThread(QThread):
 
 
 class MiniWidget(QWidget):
-    """Small floating widget for quick recording"""
+    """Small floating widget for quick recording with visualizer"""
     def __init__(self, parent=None):
         super().__init__(parent, Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.Tool)
         self.recording = False
@@ -178,17 +263,21 @@ class MiniWidget(QWidget):
         self.init_ui()
 
     def init_ui(self):
-        self.setFixedSize(120, 80)
+        self.setFixedSize(140, 110)
         self.setStyleSheet(WIDGET_STYLE)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(5)
+
+        # Visualizer
+        self.visualizer = VoiceVisualizer(self, bar_count=12, mini=True)
+        layout.addWidget(self.visualizer)
 
         # Mic button
         self.mic_btn = QPushButton("🎤")
         self.mic_btn.setObjectName("micBtn")
-        self.mic_btn.setFixedSize(50, 50)
+        self.mic_btn.setFixedSize(40, 40)
         self.mic_btn.clicked.connect(self.toggle_recording)
 
         btn_layout = QHBoxLayout()
@@ -223,6 +312,7 @@ class MiniWidget(QWidget):
 
             self.recording = True
             self.audio_data = []
+            self.visualizer.reset()
             self.mic_btn.setText("⏹")
             self.mic_btn.setProperty("recording", True)
             self.mic_btn.style().unpolish(self.mic_btn)
@@ -232,6 +322,9 @@ class MiniWidget(QWidget):
             def callback(indata, frames, time, status):
                 if self.recording:
                     self.audio_data.append(indata.copy())
+                    # Calculate RMS level for visualizer
+                    level = np.sqrt(np.mean(indata**2)) * 5  # Amplify for visibility
+                    QTimer.singleShot(0, lambda: self.visualizer.set_level(level))
 
             self.stream = sd.InputStream(
                 samplerate=self.sample_rate,
@@ -259,6 +352,7 @@ class MiniWidget(QWidget):
 
         if not self.audio_data:
             self.status_label.setText("No audio")
+            self.visualizer.reset()
             return
 
         self.status_label.setText("Processing...")
@@ -275,11 +369,13 @@ class MiniWidget(QWidget):
     def on_finished(self, text):
         self.status_label.setText("Done!")
         self.mic_btn.setEnabled(True)
+        self.visualizer.reset()
         self.type_text(text)
 
     def on_error(self, error):
         self.status_label.setText("Error")
         self.mic_btn.setEnabled(True)
+        self.visualizer.reset()
         print(f"Error: {error}")
 
     def type_text(self, text):
@@ -305,8 +401,8 @@ class WhisperApp(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle("Whisper")
-        self.setMinimumSize(500, 450)
-        self.setGeometry(100, 100, 550, 500)
+        self.setMinimumSize(500, 500)
+        self.setGeometry(100, 100, 550, 550)
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -337,6 +433,10 @@ class WhisperApp(QMainWindow):
         settings.addWidget(self.model_combo)
         settings.addStretch()
         layout.addLayout(settings)
+
+        # Voice Visualizer
+        self.visualizer = VoiceVisualizer(self, bar_count=30, mini=False)
+        layout.addWidget(self.visualizer)
 
         # Record button
         btn_layout = QHBoxLayout()
@@ -374,7 +474,6 @@ class WhisperApp(QMainWindow):
     def show_mini_widget(self):
         if not self.mini_widget:
             self.mini_widget = MiniWidget()
-            self.mini_widget.model_name = self.model_combo.currentText()
         self.mini_widget.model_name = self.model_combo.currentText()
         self.mini_widget.show()
         self.mini_widget.move(100, 100)
@@ -391,6 +490,7 @@ class WhisperApp(QMainWindow):
 
             self.recording = True
             self.audio_data = []
+            self.visualizer.reset()
             self.record_btn.setText("Stop Recording")
             self.record_btn.setProperty("recording", True)
             self.record_btn.style().unpolish(self.record_btn)
@@ -400,6 +500,9 @@ class WhisperApp(QMainWindow):
             def callback(indata, frames, time, status):
                 if self.recording:
                     self.audio_data.append(indata.copy())
+                    # Calculate RMS level for visualizer
+                    level = np.sqrt(np.mean(indata**2)) * 5  # Amplify for visibility
+                    QTimer.singleShot(0, lambda: self.visualizer.set_level(level))
 
             self.stream = sd.InputStream(
                 samplerate=self.sample_rate,
@@ -427,6 +530,7 @@ class WhisperApp(QMainWindow):
 
         if not self.audio_data:
             self.status_label.setText("No audio recorded")
+            self.visualizer.reset()
             return
 
         self.status_label.setText("Processing...")
@@ -454,12 +558,14 @@ class WhisperApp(QMainWindow):
 
         self.status_label.setText("✓ Done - Text typed to focused window")
         self.record_btn.setEnabled(True)
+        self.visualizer.reset()
 
         # Type into focused window
         self.type_text(text)
 
     def on_error(self, error):
         self.status_label.setText("")
+        self.visualizer.reset()
         QMessageBox.critical(self, "Error", f"Failed:\n{error}")
         self.record_btn.setEnabled(True)
 
