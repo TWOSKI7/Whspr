@@ -24,5 +24,12 @@ if ! python3 -c "import whisper" 2>/dev/null; then
     pip install openai-whisper
 fi
 
-echo "Launching desktop app..."
+if ! python3 -c "import sounddevice" 2>/dev/null; then
+    echo "Installing microphone support..."
+    pip install sounddevice numpy
+fi
+
+echo ""
+echo "Launching Whisper Desktop..."
+echo ""
 python3 desktop.py
