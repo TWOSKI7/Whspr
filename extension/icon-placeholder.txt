@@ -1,0 +1,28 @@
+ICON PLACEHOLDER
+
+The extension requires icon files:
+- icon16.png (16x16)
+- icon48.png (48x48)
+- icon128.png (128x128)
+
+Recommended design:
+- Microphone icon in orange (#ff6b35)
+- Dark background (#0a0a0f or transparent)
+- Neon glow effect
+- Simple, recognizable design
+
+You can create these icons using:
+1. Design tool (Figma, Sketch, etc.)
+2. Icon generator website
+3. SVG to PNG converter
+
+Or use placeholder icons temporarily:
+- Create simple colored squares with text
+- Use free icon resources (flaticon, icons8, etc.)
+
+The extension will still work without icons, but Chrome will show a default icon.
+
+To add icons after creation:
+1. Save icon files in this directory
+2. Ensure they match the filenames in manifest.json
+3. Reload the extension in chrome://extensions/

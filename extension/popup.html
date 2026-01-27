@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whspr Voice Input</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header>
+      <h1>Whspr Voice Input</h1>
+      <p class="tagline">Open-source voice-to-text</p>
+    </header>
+
+    <div class="status-section">
+      <div class="status-row">
+        <span class="status-label">Backend Status:</span>
+        <span id="connection-status" class="status-value loading">Checking...</span>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <label for="model-select" class="setting-label">Whisper Model:</label>
+      <select id="model-select" class="model-select">
+        <option value="base" selected>Base (Fast)</option>
+      </select>
+      <p class="setting-help">Loading models...</p>
+    </div>
+
+    <div class="shortcut-section">
+      <div class="shortcut-info">
+        <span class="shortcut-label">Keyboard Shortcut:</span>
+        <kbd class="shortcut-key">Alt+V</kbd>
+      </div>
+      <p class="shortcut-help">Focus any text field and press Alt+V to start recording</p>
+    </div>
+
+    <footer>
+      <a href="http://localhost:5000" target="_blank" class="backend-link">
+        Open Backend Dashboard
+      </a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

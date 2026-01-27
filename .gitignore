@@ -9,3 +9,7 @@ thumbs.db
 .DS_Store
 .idea
 
+venv/
+ui/dist/
+ui/node_modules/
+__pycache__/

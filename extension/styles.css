@@ -1,0 +1,177 @@
+/* Whspr Voice Input Injected Styles - Cyber-Gourmet Theme */
+
+/* CSS Variables for Cyber-Gourmet Design */
+:root {
+  --whspr-bg-dark: #0a0a0f;
+  --whspr-bg-card: #12121a;
+  --whspr-border: #1e1e2e;
+  --whspr-text-primary: #e4e4e7;
+  --whspr-text-secondary: #a1a1aa;
+  --whspr-accent-orange: #ff6b35;
+  --whspr-accent-orange-dim: #ff6b3540;
+  --whspr-accent-orange-bright: #ff8c61;
+  --whspr-glow-orange: 0 0 20px rgba(255, 107, 53, 0.5);
+  --whspr-glow-orange-strong: 0 0 30px rgba(255, 107, 53, 0.8);
+}
+
+/* Floating Mic Button */
+#whspr-floating-mic {
+  position: absolute;
+  z-index: 999999;
+  width: 40px;
+  height: 40px;
+  background: var(--whspr-bg-card);
+  border: 2px solid var(--whspr-accent-orange);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--whspr-glow-orange), 0 4px 12px rgba(0, 0, 0, 0.3);
+  color: var(--whspr-accent-orange);
+}
+
+#whspr-floating-mic:hover {
+  transform: scale(1.1);
+  box-shadow: var(--whspr-glow-orange-strong), 0 6px 16px rgba(0, 0, 0, 0.4);
+  background: var(--whspr-accent-orange-dim);
+}
+
+#whspr-floating-mic:active {
+  transform: scale(0.95);
+}
+
+#whspr-floating-mic.recording {
+  background: var(--whspr-accent-orange);
+  color: var(--whspr-bg-dark);
+  animation: whspr-pulse-ring 1.5s ease-out infinite;
+}
+
+/* Recording Overlay */
+#whspr-recording-overlay {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999999;
+  background: var(--whspr-bg-card);
+  border: 2px solid var(--whspr-accent-orange);
+  border-radius: 24px;
+  padding: 20px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  box-shadow: var(--whspr-glow-orange-strong), 0 8px 32px rgba(0, 0, 0, 0.5);
+  min-width: 240px;
+}
+
+#whspr-recording-overlay.processing {
+  flex-direction: row;
+  gap: 12px;
+}
+
+.whspr-status-text {
+  color: var(--whspr-text-primary);
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+/* Waveform Animation */
+.whspr-waveform {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  height: 40px;
+}
+
+.whspr-bar {
+  width: 4px;
+  background: var(--whspr-accent-orange);
+  border-radius: 2px;
+  animation: whspr-wave 1s ease-in-out infinite;
+  box-shadow: 0 0 10px var(--whspr-accent-orange);
+}
+
+.whspr-bar:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.whspr-bar:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.whspr-bar:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.whspr-bar:nth-child(4) {
+  animation-delay: 0.3s;
+}
+
+.whspr-bar:nth-child(5) {
+  animation-delay: 0.4s;
+}
+
+/* Processing Spinner */
+.whspr-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--whspr-border);
+  border-top-color: var(--whspr-accent-orange);
+  border-radius: 50%;
+  animation: whspr-spin 0.8s linear infinite;
+}
+
+/* Animations */
+@keyframes whspr-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.7), var(--whspr-glow-orange);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(255, 107, 53, 0), var(--whspr-glow-orange);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 107, 53, 0), var(--whspr-glow-orange);
+  }
+}
+
+@keyframes whspr-wave {
+  0%, 100% {
+    height: 10px;
+  }
+  50% {
+    height: 40px;
+  }
+}
+
+@keyframes whspr-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Ensure buttons don't interfere with page layout */
+#whspr-floating-mic,
+#whspr-recording-overlay {
+  pointer-events: auto;
+}
+
+/* Remove any potential conflicts with page styles */
+#whspr-floating-mic *,
+#whspr-recording-overlay * {
+  all: unset;
+  box-sizing: border-box;
+}
+
+#whspr-floating-mic svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
